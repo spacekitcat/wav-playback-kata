@@ -1,3 +1,4 @@
 
 bin_PROGRAMS = wavout
-wavout_SOURCE = main.c
+wavout_SOURCES = main.c
+wavout_LDADD = -lportaudio $(LDADD)
