@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <AudioUnit/AudioUnit.h>
 #include "portaudio.h"
 
 struct RIFF
@@ -24,11 +23,12 @@ struct WAV
   int dataChunkSize;
 };
 
-typedef struct
+struct paTestData
 {
   float left_phase;
   float right_phase;
-} paTestData;
+};
+
 /* This routine will be called by the PortAudio engine when audio is needed.
    It may called at interrupt level on some machines so don't do anything
    that could mess up the system like calling malloc() or free().
@@ -40,24 +40,14 @@ static int patestCallback(const void *inputBuffer, void *outputBuffer,
                           void *userData)
 {
   /* Cast data passed through stream to our structure. */
-  paTestData *data = (paTestData *)userData;
   float *out = (float *)outputBuffer;
   unsigned int i;
   (void)inputBuffer; /* Prevent unused variable warning. */
 
+  printf("%d\n", inputBuffer);
   for (i = 0; i < framesPerBuffer; i++)
   {
-    *out++ = data->left_phase;  /* left */
-    *out++ = data->right_phase; /* right */
-    /* Generate simple sawtooth phaser that ranges between -1.0 and 1.0. */
-    data->left_phase += 0.01f;
-    /* When signal reaches top, drop back down. */
-    if (data->left_phase >= 1.0f)
-      data->left_phase -= 2.0f;
-    /* higher pitch so we can distinguish left and right. */
-    data->right_phase += 0.03f;
-    if (data->right_phase >= 1.0f)
-      data->right_phase -= 2.0f;
+
   }
   return 0;
 }
@@ -87,7 +77,8 @@ struct WAV *readWavHeader(FILE *handle)
 int main(int argc, char **argv)
 {
   char inputFile[] = "sample.wav\0";
-  FILE *handle = fopen(inputFile, "r");
+  char dumpFile[] = "dump.bin\0";
+  FILE *handle = fopen(inputFile, "rb");
 
   if (!handle)
   {
@@ -121,18 +112,92 @@ int main(int argc, char **argv)
   printf("%d\n", wavHeader->dataChunkSize);
   printf("%d\n", wavHeader->byteRate);
   int byteReadRate = wavHeader->sampleRate / wavHeader->bitsPerSample;
+  printf("Byte read rate: \t%d\n", byteReadRate);
   for (int i = 0; i < wavHeader->dataChunkSize; i += byteReadRate)
   {
     char next[wavHeader->byteRate];
     fread(dataBufferPtr, byteReadRate, 1, handle);
-    //memcpy(dataBufferPtr, next, byteReadRate);
     dataBufferPtr += byteReadRate;
   }
 
-  if (!Pa_Initialize())
+  FILE *dumpFileHandle = fopen(dumpFile, "w");
+  if (!dumpFileHandle)
   {
-    printf("Failed to initialise portaudio");
+    printf("Failed to open dump file");
     return 1;
+  }
+  fwrite(dataBuffer, wavHeader->dataChunkSize, 1, dumpFileHandle);
+  fclose(dumpFileHandle);
+
+  int paInitResult = Pa_Initialize();
+  if (paInitResult != 0)
+  {
+    printf("Failed to initialise portaudio, %s\n", Pa_GetErrorText(paInitResult));
+    return 1;
+  }
+  else
+  {
+    printf("Initialised portaudio\n");
+  }
+
+  struct PsStream *stream;
+  struct paTestData testData;
+
+  int err = Pa_OpenDefaultStream(
+      &stream,
+      0,
+      2,
+      paFloat32,
+      wavHeader->sampleRate,
+      paFramesPerBufferUnspecified,
+      patestCallback,
+      &testData);
+
+  if (err != 0)
+  {
+    printf("Failed to to open byte stream, %s\n", Pa_GetErrorText(err));
+    return 1;
+  }
+  else
+  {
+    printf("Opened byte stream\n");
+  }
+
+  err = Pa_StartStream(stream);
+  if (err != 0)
+  {
+    printf("Failed to start stream, %s\n", Pa_GetErrorText(err));
+    return 1;
+  }
+  else
+  {
+    printf("Started stream\n");
+  }
+
+  Pa_WriteStream(stream, dataBuffer, 1000);
+
+  Pa_Sleep(3 * 1000);
+
+  err = Pa_CloseStream(stream);
+  if (err != 0)
+  {
+    printf("Failed to close stream, %s\n", Pa_GetErrorText(err));
+    return 1;
+  }
+  else
+  {
+    printf("Stopped  stream\n");
+  }
+
+  err = Pa_Terminate();
+  if (err != 0)
+  {
+    printf("Failed to terminate portaudio, %s\n", Pa_GetErrorText(err));
+    return 1;
+  }
+  else
+  {
+    printf("Stopped portaudio\n");
   }
 
   free(riffHeader);
