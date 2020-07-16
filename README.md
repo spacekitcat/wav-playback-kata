@@ -14,6 +14,10 @@ I started out trying to use the AudioUnit API in OSX, but it didn't seem worth i
 
 I've written a parser in C, it reads the RIFF and WAV headers and copies the LPCM stream into a buffer. I've not tested the last part yet, I'm working on getting portaudio setup first.
 
+### 17 July
+
+I got it to play the PCM data without distortion and an appropriate base signal level (volume). I remember there was this idea that variable definitions should be at the top of the method in C. I'm not sure if that really makes sense, surely you'd want variables defined near their use (and also minimize the distance between memory allocation and memory deallocation calls to make it easier to avoid mistakes). I've considered that it might actually be some sort of optimisation strategy for the compiler? I assumed modern compilers were smart enough to be able to not give a flying duck.
+
 ## Building
 
 You need to install Portaudio as a shared library, on OSX you can use Brew.
