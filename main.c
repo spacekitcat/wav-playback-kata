@@ -4,25 +4,31 @@
 #include <math.h>
 #include <portaudio.h>
 
+typedef struct RIFFCkHeader
+{
+  char ckID[4];
+  int ckSize;
+
+} RIFFCkHeader;
+
 typedef struct RIFFHeader
 {
-  char chunkID[4];
-  int chunkSize;
+  RIFFCkHeader ckHeader;
   char format[4];
+
 } RIFFHeader;
 
 typedef struct WavHeader
 {
-  char formatChunkId[4];
-  int formatChunkSize;
+  RIFFCkHeader ckFormatHeader;
   short audioFormat;
   short numChannels;
   int sampleRate;
   int byteRate;
   short blockAlign;
   short bitsPerSample;
-  char dataChunkID[4];
-  int dataChunkSize;
+  RIFFCkHeader ckDataHeader;
+
 } WavHeader;
 
 typedef struct PcmDataChunk
@@ -30,6 +36,7 @@ typedef struct PcmDataChunk
   short int *buffer;
   short int *iterator;
   struct WavHeader *wavHeader;
+
 } PcmDataChunk;
 
 float correctSignalPowerLevel(float signal, WavHeader *format, int fixedReductionBias)
@@ -70,20 +77,20 @@ WavHeader *readWavHeader(FILE *handle)
 
 void dumpHeaders(RIFFHeader *riffHeader, WavHeader *wavHeader)
 {
-  printf("ChunkID\t\t= %.*s\n", 4, riffHeader->chunkID);
-  printf("ChunkSize\t= %d\n", riffHeader->chunkSize);
-  printf("Format\t\t= %.*s\n", 4, riffHeader->format);
+  printf("riffHeader->ckHeader.ckID\t= %.*s\n", 4, riffHeader->ckHeader.ckID);
+  printf("riffHeader->ckHeader.ckSize\t= %d\n", riffHeader->ckHeader.ckSize);
+  printf("riffHeader->format\t\t= %.*s\n", 4, riffHeader->format);
 
-  printf("FormatChunkId\t= %.*s\n", 4, wavHeader->formatChunkId);
-  printf("FormatChunkSize\t= %d\n", wavHeader->formatChunkSize);
-  printf("audioFormat\t= %d\n", wavHeader->audioFormat);
-  printf("numChannels\t= %d\n", wavHeader->numChannels);
-  printf("sampleRate\t= %d\n", wavHeader->sampleRate);
-  printf("byteRate\t= %d\n", wavHeader->byteRate);
-  printf("blockAlign\t= %d\n", wavHeader->blockAlign);
-  printf("bitsPerSample\t= %d\n", wavHeader->bitsPerSample);
-  printf("DataChunkId\t= %.*s\n", 4, wavHeader->dataChunkID);
-  printf("DataChunkSize\t= %d\n", wavHeader->dataChunkSize);
+  printf("wavHeader->ckFormatHeader.ckID\t= %.*s\n", 4, wavHeader->ckFormatHeader.ckID);
+  printf("avHeader->ckFormatHeader.ckSize\t= %d\n", wavHeader->ckFormatHeader.ckSize);
+  printf("wavHeader->audioFormat\t\t= %d\n", wavHeader->audioFormat);
+  printf("wavHeader->numChannels\t\t= %d\n", wavHeader->numChannels);
+  printf("wavHeader->sampleRate\t\t= %d\n", wavHeader->sampleRate);
+  printf("wavHeader->byteRate\t\t= %d\n", wavHeader->byteRate);
+  printf("wavHeader->blockAlign\t\t= %d\n", wavHeader->blockAlign);
+  printf("wavHeader->bitsPerSample\t= %d\n", wavHeader->bitsPerSample);
+  printf("wavHeader->ckDataHeader.ckID\t= %.*s\n", 4, wavHeader->ckDataHeader.ckID);
+  printf("wavHeader->ckDataHeader.ckSize\t= %d\n", wavHeader->ckDataHeader.ckSize);
 }
 
 int main(int argc, char **argv)
@@ -121,10 +128,10 @@ int main(int argc, char **argv)
     return 1;
   }
 
-  short int *dataBuffer = malloc(wavHeader->dataChunkSize);
+  short int *dataBuffer = malloc(wavHeader->ckDataHeader.ckSize);
   short int *dataBufferPtr = dataBuffer;
 
-  fread(dataBufferPtr, wavHeader->dataChunkSize, 1, handle);
+  fread(dataBufferPtr, wavHeader->ckDataHeader.ckSize, 1, handle);
 
   PaStreamParameters outputParams;
   outputParams.device = Pa_GetDefaultOutputDevice();
@@ -162,8 +169,8 @@ int main(int argc, char **argv)
     return 1;
   }
 
-  int duration = wavHeader->dataChunkSize / wavHeader->byteRate;
-  printf("File duration: %d minutes and %d seconds\n", duration/60, duration%60);
+  int duration = wavHeader->ckDataHeader.ckSize / wavHeader->byteRate;
+  printf("\nFile duration: %d minutes and %d seconds\n\n", duration/60, duration%60);
   Pa_Sleep(duration * 1000);
 
   err = Pa_CloseStream(stream);
