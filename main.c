@@ -13,21 +13,21 @@ typedef struct RIFFCkHeader
 
 typedef struct RIFFHeader
 {
-  RIFFCkHeader ckHeader;
+  RIFFCkHeader riffChunkHeader;
   char format[4];
 
 } RIFFHeader;
 
 typedef struct WavHeader
 {
-  RIFFCkHeader ckFormatHeader;
-  short audioFormat;
-  short numChannels;
-  int sampleRate;
-  int byteRate;
-  short blockAlign;
+  RIFFCkHeader waveFormatChunkHeader;
+  short waveFormatTag;
+  short waveChannels;
+  int waveSamplesPerSecond;
+  int waveAvgBytesPerSecond;
+  short waveBlockAlign;
   short bitsPerSample;
-  RIFFCkHeader ckDataHeader;
+  RIFFCkHeader waveDataChunkHeader;
 
 } WavHeader;
 
@@ -39,21 +39,30 @@ typedef struct PcmDataChunk
 
 } PcmDataChunk;
 
+enum WaveFormatTypes
+{
+  MICROSOFT_PCM = 0x0001,
+  IBM_MULAW = 0x0101,
+  IBM_ALAW = 0x0102,
+  IBM_ADPCM = 0x0103,
+  ADPCM = 0x0003
+};
+
 float correctSignalPowerLevel(float signal, WavHeader *format, int fixedReductionBias)
 {
-  return (signal / format->sampleRate / format->numChannels / format->blockAlign) - fixedReductionBias;
+  return (signal / format->waveSamplesPerSecond / format->waveChannels / format->waveBlockAlign) - fixedReductionBias;
 }
 
 static int streamProcessorCb(const void *inputBuffer, void *outputBuffer,
-                          unsigned long framesPerBuffer,
-                          const PaStreamCallbackTimeInfo *timeInfo,
-                          PaStreamCallbackFlags statusFlags,
-                          void *input)
+                             unsigned long framesPerBuffer,
+                             const PaStreamCallbackTimeInfo *timeInfo,
+                             PaStreamCallbackFlags statusFlags,
+                             void *input)
 {
   float *out = (float *)outputBuffer;
   PcmDataChunk *PcmDataChunk = (struct PcmDataChunk *)input;
 
-  for (unsigned int i = 0; i < framesPerBuffer * PcmDataChunk->wavHeader->numChannels; i++)
+  for (unsigned int i = 0; i < framesPerBuffer * PcmDataChunk->wavHeader->waveChannels; i++)
   {
     *out++ = correctSignalPowerLevel(*PcmDataChunk->iterator++, PcmDataChunk->wavHeader, 0);
   }
@@ -77,20 +86,20 @@ WavHeader *readWavHeader(FILE *handle)
 
 void dumpHeaders(RIFFHeader *riffHeader, WavHeader *wavHeader)
 {
-  printf("riffHeader->ckHeader.ckID\t= %.*s\n", 4, riffHeader->ckHeader.ckID);
-  printf("riffHeader->ckHeader.ckSize\t= %d\n", riffHeader->ckHeader.ckSize);
+  printf("riffHeader->riffChunkHeader.ckID\t= %.*s\n", 4, riffHeader->riffChunkHeader.ckID);
+  printf("riffHeader->riffChunkHeader.ckSize\t= %d\n", riffHeader->riffChunkHeader.ckSize);
   printf("riffHeader->format\t\t= %.*s\n", 4, riffHeader->format);
 
-  printf("wavHeader->ckFormatHeader.ckID\t= %.*s\n", 4, wavHeader->ckFormatHeader.ckID);
-  printf("avHeader->ckFormatHeader.ckSize\t= %d\n", wavHeader->ckFormatHeader.ckSize);
-  printf("wavHeader->audioFormat\t\t= %d\n", wavHeader->audioFormat);
-  printf("wavHeader->numChannels\t\t= %d\n", wavHeader->numChannels);
-  printf("wavHeader->sampleRate\t\t= %d\n", wavHeader->sampleRate);
-  printf("wavHeader->byteRate\t\t= %d\n", wavHeader->byteRate);
-  printf("wavHeader->blockAlign\t\t= %d\n", wavHeader->blockAlign);
+  printf("wavHeader->waveFormatChunkHeader.ckID\t= %.*s\n", 4, wavHeader->waveFormatChunkHeader.ckID);
+  printf("avHeader->waveFormatChunkHeader.ckSize\t= %d\n", wavHeader->waveFormatChunkHeader.ckSize);
+  printf("wavHeader->waveFormatTag\t\t= %d\n", wavHeader->waveFormatTag);
+  printf("wavHeader->waveChannels\t\t= %d\n", wavHeader->waveChannels);
+  printf("wavHeader->waveSamplesPerSecond\t\t= %d\n", wavHeader->waveSamplesPerSecond);
+  printf("wavHeader->waveAvgBytesPerSecond\t\t= %d\n", wavHeader->waveAvgBytesPerSecond);
+  printf("wavHeader->waveBlockAlign\t\t= %d\n", wavHeader->waveBlockAlign);
   printf("wavHeader->bitsPerSample\t= %d\n", wavHeader->bitsPerSample);
-  printf("wavHeader->ckDataHeader.ckID\t= %.*s\n", 4, wavHeader->ckDataHeader.ckID);
-  printf("wavHeader->ckDataHeader.ckSize\t= %d\n", wavHeader->ckDataHeader.ckSize);
+  printf("wavHeader->waveDataChunkHeader.ckID\t= %.*s\n", 4, wavHeader->waveDataChunkHeader.ckID);
+  printf("wavHeader->waveDataChunkHeader.ckSize\t= %d\n", wavHeader->waveDataChunkHeader.ckSize);
 }
 
 int main(int argc, char **argv)
@@ -114,9 +123,27 @@ int main(int argc, char **argv)
   RIFFHeader *riffHeader = readRiffHeader(handle);
   WavHeader *wavHeader = readWavHeader(handle);
 
-  if (wavHeader->audioFormat != 1)
+  printf("\n\nWARNING: Only Microsoft PCM support is implemented. ");
+  switch (wavHeader->waveFormatTag)
   {
-    printf("\n\nWARNING: I only know how to play LPCM, this appears to have some sort of compression. Format code: %d\n\n", wavHeader->audioFormat);
+  case IBM_MULAW:
+    printf("This is IBM mu-law format.\n\n");
+    break;
+  case IBM_ALAW:
+    printf("This is IBM a-law format.\n\n");
+    break;
+  case IBM_ADPCM:
+    printf("This is IBM AVC Adaptive Differential Pulse Code Modulation format.\n\n");
+    break;
+  case ADPCM:
+    printf("This is IMA ADPCM format.\n\n");
+    break;
+  case MICROSOFT_PCM:
+    printf("This is Microsoft PCM format.\n\n");
+    break;
+  default:
+    printf("This format is unrecognised.\n\n");
+    break;
   }
 
   dumpHeaders(riffHeader, wavHeader);
@@ -128,10 +155,10 @@ int main(int argc, char **argv)
     return 1;
   }
 
-  short int *dataBuffer = malloc(wavHeader->ckDataHeader.ckSize);
+  short int *dataBuffer = malloc(wavHeader->waveDataChunkHeader.ckSize);
   short int *dataBufferPtr = dataBuffer;
 
-  fread(dataBufferPtr, wavHeader->ckDataHeader.ckSize, 1, handle);
+  fread(dataBufferPtr, wavHeader->waveDataChunkHeader.ckSize, 1, handle);
 
   PaStreamParameters outputParams;
   outputParams.device = Pa_GetDefaultOutputDevice();
@@ -150,7 +177,7 @@ int main(int argc, char **argv)
       &stream,
       NULL,
       &outputParams,
-      wavHeader->sampleRate,
+      wavHeader->waveSamplesPerSecond,
       2048,
       paClipOff,
       streamProcessorCb,
@@ -169,8 +196,8 @@ int main(int argc, char **argv)
     return 1;
   }
 
-  int duration = wavHeader->ckDataHeader.ckSize / wavHeader->byteRate;
-  printf("\nFile duration: %d minutes and %d seconds\n\n", duration/60, duration%60);
+  int duration = wavHeader->waveDataChunkHeader.ckSize / wavHeader->waveAvgBytesPerSecond;
+  printf("\nFile duration: %d minutes and %d seconds\n\n", duration / 60, duration % 60);
   Pa_Sleep(duration * 1000);
 
   err = Pa_CloseStream(stream);
